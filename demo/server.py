@@ -1,6 +1,7 @@
 """BSM sample demo server — port 7873.
 
-Serves the memory on-vs-off view over real Continual Learning Bench scans.
+Serves the three-arm view (memory off / context replay / memory on) over
+real Continual Learning Bench scans.
 Run ./run_demo.sh from the repository root, then open
 http://localhost:7873
 """
@@ -35,6 +36,8 @@ def _arm_of_thread() -> str | None:
         return "on"
     if name == "arm-off":
         return "off"
+    if name == "arm-icl":
+        return "icl"
     return None
 
 

@@ -1,13 +1,18 @@
-"""BSM sample scenario: memory on vs off over real benchmark scans.
+"""BSM sample scenario: three retention strategies over real benchmark scans.
 
-Each scan runs through two arms in lockstep. Both arms make one LLM call
-per scan with the same base prompt and the same current-scan peaks. The
-on arm additionally holds a transmitter registry that lives in Mubit: it
-recalls the registry before the call, merges the current peaks into it,
-and writes the update back after the call. The off arm holds no state of
-any kind between scans.
+Each scan runs through three arms in lockstep. Every arm makes one LLM
+call per scan with the same base prompt and the same current-scan peaks.
 
-Both reports are scored with the benchmark's availability-IoU rule
+- off: holds no state of any kind between scans.
+- icl (context replay): holds no external memory, but resends every
+  earlier scan verbatim in the prompt. Its prompt at scan N contains the
+  N-1 earlier scan blocks plus the current one.
+- on: holds a transmitter registry that lives in Mubit. It recalls the
+  registry before the call, merges the current peaks into it, and writes
+  the update back after the call. The registry block in the prompt has a
+  bounded size (one line per known transmitter).
+
+All reports are scored with the benchmark's availability-IoU rule
 against the window's latent channel set.
 """
 
@@ -134,8 +139,9 @@ class BSMScenario:
               "truth": [{"cf": round((a + b) / 2, 2), "bw": round(b - a, 1)}
                         for a, b in truth]})
 
-        scores = {"on": [], "off": []}
+        scores = {"on": [], "off": [], "icl": []}
         registry: list[dict] = []
+        replay_history: list[str] = []
         last_stage: Optional[int] = None
 
         for i, scan in enumerate(scans, 1):
@@ -164,6 +170,29 @@ class BSMScenario:
                                 json_mode=True)
                 iv, count, ok = _parse_report(text)
                 results["off"] = {"iv": iv, "count": count, "ok": ok, "known": count}
+
+            def arm_replay():
+                # The off arm's prompt plus every earlier scan verbatim.
+                # No external memory: the model must rebuild the picture
+                # from the raw history on every call.
+                if replay_history:
+                    hist = "\n\n".join(replay_history)
+                    user = (f"EARLIER SCANS (full history so far):\n{hist}\n\n"
+                            f"--- Scan {scan['scan_idx']} (current) ---\n"
+                            f"Detected peaks:\n{_fmt_peaks(scan)}\n\n"
+                            f"Report all persistent transmitters in the band, "
+                            f"including ones only seen in earlier scans.")
+                else:
+                    user = (f"--- Scan {scan['scan_idx']} ---\n"
+                            f"Detected peaks:\n{_fmt_peaks(scan)}\n\n"
+                            f"Report all persistent transmitters in the band.")
+                text = complete(system=_BASE_SYSTEM, user=user,
+                                temperature=0.2, max_output_tokens=1400,
+                                json_mode=True)
+                iv, count, ok = _parse_report(text)
+                results["icl"] = {"iv": iv, "count": count, "ok": ok,
+                                  "known": count,
+                                  "ctx": len(replay_history) + 1}
 
             def arm_on():
                 # 1. Recall the registry from Mubit.
@@ -211,12 +240,24 @@ class BSMScenario:
                     pass
                 registry[:] = reg
 
-            t_on = threading.Thread(target=arm_on, name="arm-on", daemon=True)
-            t_off = threading.Thread(target=arm_off, name="arm-off", daemon=True)
-            t_on.start(); t_off.start()
-            t_on.join(); t_off.join()
+            threads = [
+                threading.Thread(target=arm_on, name="arm-on", daemon=True),
+                threading.Thread(target=arm_off, name="arm-off", daemon=True),
+                threading.Thread(target=arm_replay, name="arm-icl", daemon=True),
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
 
-            for arm in ("off", "on"):
+            # The current scan enters the replay arm's history for the
+            # next call (after the joins, so this scan's call did not
+            # already contain it).
+            replay_history.append(
+                f"--- Scan {scan['scan_idx']} ---\n"
+                f"Detected peaks:\n{_fmt_peaks(scan)}")
+
+            for arm in ("off", "icl", "on"):
                 r = results.get(arm) or {"iv": [], "count": 0, "ok": False,
                                          "known": 0}
                 iou = iou_available(r["iv"], truth)
@@ -225,6 +266,7 @@ class BSMScenario:
                       "iou": round(iou, 3),
                       "mean_iou": round(sum(scores[arm]) / len(scores[arm]), 3),
                       "count": r["count"], "known": r["known"],
+                      "ctx": r.get("ctx"),
                       "parse_ok": r["ok"],
                       "intervals": [[round(a, 2), round(b, 2)] for a, b in r["iv"]]})
             time.sleep(0.4)

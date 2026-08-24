@@ -11,7 +11,7 @@
   --border:#232b36; --border-subtle:#1b222b;
   --text:#e6edf3; --text-secondary:#b0bac5; --muted:#768390; --faint:#4d5761;
   --accent:#58a6ff; --success:#3fb950; --warning:#d29922; --danger:#f85149;
-  --purple:#bc8cff;
+  --purple:#bc8cff; --replay:#39c5cf;
   --mono:ui-monospace,'SF Mono','Cascadia Code','Fira Code',Menlo,monospace;
   --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
 }
@@ -49,21 +49,27 @@ button.primary:disabled { opacity:.45; cursor:not-allowed; }
 .band-card h3, .chart-card h3 { font-size:11px; color:var(--text-secondary);
   text-transform:uppercase; letter-spacing:.08em; }
 .band-note { font-size:11px; color:var(--faint); margin-top:2px; }
-canvas.band { width:100%; height:150px; margin-top:10px; display:block; }
+canvas.band { width:100%; height:198px; margin-top:10px; display:block; }
 
-.cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+.cols { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:16px; }
 .arm { border:1px solid var(--border); border-radius:10px; background:var(--bg-subtle); padding:12px 14px; }
 .arm.off { border-top:3px solid var(--warning); }
+.arm.icl { border-top:3px solid var(--replay); }
 .arm.on  { border-top:3px solid var(--success); }
 .arm h2 { font-size:14px; }
 .arm.off h2 { color:var(--warning); }
+.arm.icl h2 { color:var(--replay); }
 .arm.on  h2 { color:var(--success); }
 .arm-sub { font-size:11px; color:var(--muted); margin-left:8px; }
-.stat-row { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-top:10px; }
+.stat-row { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
 .mini { background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 8px; }
 .mini .v { font-family:var(--mono); font-size:14px; font-variant-numeric:tabular-nums; }
 .mini .l { font-size:9px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; margin-top:2px; }
 .mubit-line { font-family:var(--mono); font-size:11px; color:var(--success); margin-top:8px; min-height:15px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ctx-line { font-family:var(--mono); font-size:11px; color:var(--replay); margin-top:8px; min-height:15px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.off-line { font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:8px; min-height:15px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 .ledger { margin-top:16px; border:1px solid var(--border-subtle); border-radius:8px;
@@ -102,10 +108,11 @@ canvas.band { width:100%; height:150px; margin-top:10px; display:block; }
   <p class="subtitle">
     A small sample of the Continual Learning Bench blind-spectrum-monitoring task,
     scored with the benchmark's published availability-IoU rule. Each scan shows only
-    the transmitters that are active right now — about a quarter of the truth. Both
-    arms get the same scans and the same model. The arm on the right keeps a
-    transmitter registry in Mubit: it recalls the registry before each report and
-    writes the update back after it. The arm on the left holds nothing between scans.
+    the transmitters that are active right now — about a quarter of the truth. All
+    three arms get the same scans and the same model, and differ only in what they
+    carry between scans: nothing (memory off), the full raw history resent in every
+    prompt (context replay), or a fixed-size transmitter registry stored in Mubit
+    and recalled each scan (memory on).
   </p>
   <div class="controls">
     <span class="model-badge" id="modelBadge">gemini-3.7-flash</span>
@@ -119,8 +126,8 @@ canvas.band { width:100%; height:150px; margin-top:10px; display:block; }
 
 <div class="band-card">
   <h3>The 168 MHz band — truth vs each arm's latest report</h3>
-  <div class="band-note">top: the window's transmitters (bright = active this scan, dim = dormant) · middle: memory-off report · bottom: memory-on report</div>
-  <canvas class="band" id="bandCanvas" height="150"></canvas>
+  <div class="band-note">top: the window's transmitters (bright = active this scan, dim = dormant) · then each arm's latest report: memory off, context replay, memory on</div>
+  <canvas class="band" id="bandCanvas" height="198"></canvas>
 </div>
 
 <div class="cols">
@@ -134,6 +141,19 @@ canvas.band { width:100%; height:150px; margin-top:10px; display:block; }
       <div class="mini"><div class="v" id="off-llm">0</div><div class="l">llm calls</div></div>
       <div class="mini"><div class="v" id="off-cost">$0</div><div class="l">llm spend</div></div>
     </div>
+    <div class="off-line" id="off-line">no state between scans</div>
+  </section>
+  <section class="arm icl">
+    <div style="display:flex;align-items:baseline"><h2>Context Replay</h2><span class="arm-sub">all earlier scans resent in every prompt</span></div>
+    <div class="stat-row">
+      <div class="mini"><div class="v" id="icl-scan">0</div><div class="l">scans</div></div>
+      <div class="mini"><div class="v" id="icl-iou">—</div><div class="l">last iou</div></div>
+      <div class="mini"><div class="v" id="icl-mean">—</div><div class="l">mean iou</div></div>
+      <div class="mini"><div class="v" id="icl-known">0</div><div class="l">reported</div></div>
+      <div class="mini"><div class="v" id="icl-llm">0</div><div class="l">llm calls</div></div>
+      <div class="mini"><div class="v" id="icl-cost">$0</div><div class="l">llm spend</div></div>
+    </div>
+    <div class="ctx-line" id="icl-ctx">context: 0 scans</div>
   </section>
   <section class="arm on">
     <div style="display:flex;align-items:baseline"><h2>Memory On — Mubit</h2><span class="arm-sub">registry recalled and updated each scan</span></div>
@@ -159,11 +179,17 @@ canvas.band { width:100%; height:150px; margin-top:10px; display:block; }
   <div class="chart-wrap"><canvas id="chartIoU"></canvas></div>
 </div>
 
+<div class="chart-card">
+  <h3>Cumulative LLM spend — what each retention strategy costs as the stream grows</h3>
+  <div class="band-note">off and on send near-constant prompts; the replay prompt contains every earlier scan, so its per-scan cost grows with the stream</div>
+  <div class="chart-wrap"><canvas id="chartSpend"></canvas></div>
+</div>
+
 <div class="report-card" id="reportCard"></div>
 
 </div>
 <script>
-let running=false, chart=null, runSummary=null, _trace=[];
+let running=false, chart=null, spendChart=null, runSummary=null, _trace=[];
 const PRICES=[
   ['gemini-3.7-flash',{tin:0.75,tout:3.75}],
   ['gemini-2.5-flash-lite',{tin:0.10,tout:0.40}],
@@ -177,8 +203,9 @@ function fmtTok(n){ return n>=1000?(n/1000).toFixed(1)+'k':''+n; }
 function esc(s){ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function set(id,v){ const el=document.getElementById(id); if(el) el.textContent=v; }
 
-function newArm(){ return {scan:0,calls:0,tin:0,tout:0,cost:0,ms:0,ious:[],known:0,intervals:[]}; }
-let A={on:newArm(),off:newArm()}, mubitCalls=0;
+function newArm(){ return {scan:0,calls:0,tin:0,tout:0,cost:0,ms:0,ious:[],known:0,intervals:[],lastTin:0}; }
+const ARMS=['off','icl','on'], ARMIDX={off:0,icl:1,on:2};
+let A={on:newArm(),off:newArm(),icl:newArm()}, mubitCalls=0;
 let META=null, ACTIVE=[], totalScans=0;
 
 function narrate(t,cls){
@@ -204,42 +231,52 @@ function drawBand(){
   const cv=document.getElementById('bandCanvas');
   const W=cv.clientWidth; cv.width=W;
   const ctx=cv.getContext('2d');
-  ctx.clearRect(0,0,W,150);
+  ctx.clearRect(0,0,W,198);
   const band=META?META.band:[0,168];
   const X=f=>(f-band[0])/(band[1]-band[0])*W;
-  const lane=(y,h,label,color)=>{
+  const lane=(y,h,label)=>{
     ctx.fillStyle='#4d5761'; ctx.font='9px ui-monospace,monospace';
     ctx.fillText(label,2,y-3);
     ctx.strokeStyle='#1b222b'; ctx.strokeRect(0,y,W,h);
   };
+  const LANE_H=32, LANES=[14,60,106,152];
   // Lane 1: truth
-  lane(14,34,'TRUTH · bright = active this scan');
+  lane(LANES[0],LANE_H,'TRUTH · bright = active this scan');
   if(META) for(const t of META.truth){
     const active=ACTIVE.some(a=>Math.abs(a.cf-t.cf)<3);
     ctx.fillStyle=active?'rgba(88,166,255,.85)':'rgba(118,131,144,.30)';
-    ctx.fillRect(X(t.cf-t.bw/2),14,Math.max(2,X(t.cf+t.bw/2)-X(t.cf-t.bw/2)),34);
+    ctx.fillRect(X(t.cf-t.bw/2),LANES[0],Math.max(2,X(t.cf+t.bw/2)-X(t.cf-t.bw/2)),LANE_H);
   }
-  // Lane 2: off report
-  lane(62,34,'MEMORY OFF — latest report');
-  ctx.fillStyle='rgba(210,153,34,.75)';
-  for(const [a,b] of A.off.intervals) ctx.fillRect(X(a),62,Math.max(2,X(b)-X(a)),34);
-  // Lane 3: on report
-  lane(110,34,'MEMORY ON — latest report');
-  ctx.fillStyle='rgba(63,185,80,.75)';
-  for(const [a,b] of A.on.intervals) ctx.fillRect(X(a),110,Math.max(2,X(b)-X(a)),34);
+  const rep=[[LANES[1],'MEMORY OFF — latest report','rgba(210,153,34,.75)',A.off],
+             [LANES[2],'CONTEXT REPLAY — latest report','rgba(57,197,207,.75)',A.icl],
+             [LANES[3],'MEMORY ON — latest report','rgba(63,185,80,.75)',A.on]];
+  for(const [y,label,color,arm] of rep){
+    lane(y,LANE_H,label);
+    ctx.fillStyle=color;
+    for(const [a,b] of arm.intervals) ctx.fillRect(X(a),y,Math.max(2,X(b)-X(a)),LANE_H);
+  }
 }
 
 function initChart(){
   if(chart){ chart.destroy(); chart=null; }
+  if(spendChart){ spendChart.destroy(); spendChart=null; }
+  const ds=(label,color)=>({label,data:[],borderColor:color,borderWidth:1.6,tension:.25,pointRadius:2,pointBackgroundColor:color});
+  const scaleX={type:'linear',title:{display:true,text:'scan',color:'#4d5761',font:{size:10}},
+                ticks:{color:'#768390',font:{size:10},stepSize:2},grid:{color:'#1b222b'}};
   chart=new Chart(document.getElementById('chartIoU'),{type:'line',data:{datasets:[
-    {label:'memory off',data:[],borderColor:'#d29922',borderWidth:1.6,tension:.25,pointRadius:2,pointBackgroundColor:'#d29922'},
-    {label:'memory on',data:[],borderColor:'#3fb950',borderWidth:1.6,tension:.25,pointRadius:2,pointBackgroundColor:'#3fb950'},
+    ds('memory off','#d29922'), ds('context replay','#39c5cf'), ds('memory on','#3fb950'),
   ]},options:{responsive:true,maintainAspectRatio:false,animation:false,
     plugins:{legend:{labels:{color:'#b0bac5',font:{size:11}}}},
-    scales:{x:{type:'linear',title:{display:true,text:'scan',color:'#4d5761',font:{size:10}},
-               ticks:{color:'#768390',font:{size:10},stepSize:2},grid:{color:'#1b222b'}},
+    scales:{x:scaleX,
             y:{min:0,max:1,title:{display:true,text:'availability IoU',color:'#4d5761',font:{size:10}},
                ticks:{color:'#768390',font:{size:10}},grid:{color:'#1b222b'}}}}});
+  spendChart=new Chart(document.getElementById('chartSpend'),{type:'line',data:{datasets:[
+    ds('memory off','#d29922'), ds('context replay','#39c5cf'), ds('memory on','#3fb950'),
+  ]},options:{responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{labels:{color:'#b0bac5',font:{size:11}}}},
+    scales:{x:scaleX,
+            y:{min:0,title:{display:true,text:'cumulative llm spend (USD)',color:'#4d5761',font:{size:10}},
+               ticks:{color:'#768390',font:{size:10},callback:v=>'$'+(+v).toFixed(3)},grid:{color:'#1b222b'}}}}});
 }
 
 function statRefresh(arm){
@@ -253,9 +290,9 @@ function statRefresh(arm){
 }
 
 function resetUI(){
-  A={on:newArm(),off:newArm()}; mubitCalls=0; runSummary=null; META=null; ACTIVE=[];
-  ['on','off'].forEach(statRefresh);
-  set('on-mubit','mubit calls: 0'); set('scanMeta','');
+  A={on:newArm(),off:newArm(),icl:newArm()}; mubitCalls=0; runSummary=null; META=null; ACTIVE=[];
+  ARMS.forEach(statRefresh);
+  set('on-mubit','mubit calls: 0'); set('icl-ctx','context: 0 scans'); set('scanMeta','');
   document.getElementById('ledgerRows').innerHTML='<span class="lib-empty">registry events will appear here</span>';
   document.getElementById('reportCard').style.display='none';
   initChart(); drawBand();
@@ -302,9 +339,10 @@ function handleEvent(d){
       break;
 
     case 'llm_call': {
-      const arm=d.arm; if(!arm) break;
+      const arm=d.arm; if(!arm||!A[arm]) break;
       const a=A[arm];
       a.calls++; a.tin+=d.input_tokens||0; a.tout+=d.output_tokens||0; a.ms+=d.latency_ms||0;
+      a.lastTin=d.input_tokens||0;
       const p=priceFor(d.model);
       if(p) a.cost+=((d.input_tokens||0)*p.tin+(d.output_tokens||0)*p.tout)/1e6;
       statRefresh(arm);
@@ -312,13 +350,17 @@ function handleEvent(d){
     }
 
     case 'report': {
-      const arm=d.arm; if(!arm) break;
+      const arm=d.arm; if(!arm||!A[arm]) break;
       const a=A[arm];
       a.scan=d.n; a.ious.push(d.iou); a.intervals=d.intervals||[];
-      if(arm==='off') a.known=d.count; else a.known=d.known;
+      a.known=(arm==='on')?d.known:d.count;
       statRefresh(arm);
-      chart.data.datasets[arm==='off'?0:1].data.push({x:d.n,y:d.iou});
+      if(arm==='icl'&&d.ctx!=null)
+        set('icl-ctx',`context: ${d.ctx} scan${d.ctx===1?'':'s'} · last prompt: ${fmtTok(a.lastTin)} tokens`);
+      chart.data.datasets[ARMIDX[arm]].data.push({x:d.n,y:d.iou});
       chart.update('none');
+      spendChart.data.datasets[ARMIDX[arm]].data.push({x:d.n,y:+a.cost.toFixed(5)});
+      spendChart.update('none');
       drawBand();
       if(arm==='on'&&d.known>(ACTIVE.length||0)&&d.n>3){
         const dormant=d.known-ACTIVE.length;
@@ -351,34 +393,44 @@ function renderReport(){
     <td>${a.ious.length?fmt2(a.ious[a.ious.length-1]):'—'}</td>
     <td>${a.known}</td><td>${a.calls}</td><td>${fmtTok(a.tin+a.tout)}</td>
     <td>${(a.ms/1000).toFixed(0)}s</td><td>${fmt$(a.cost)}</td></tr>`;
-  const on=A.on, off=A.off;
+  const on=A.on, off=A.off, icl=A.icl;
   const firstOn=on.ious.length?on.ious[0]:null, lastOn=on.ious.length?on.ious[on.ious.length-1]:null;
-  el.innerHTML=`<h3>Memory On vs Memory Off — ${totalScans} real benchmark scans</h3>
+  const perScan=a=>a.scan?a.cost/a.scan:0;
+  el.innerHTML=`<h3>Three retention strategies — ${totalScans} real benchmark scans</h3>
     <div class="report-parity">The off arm's score stays flat: with no state between scans it can only
-      report what is visible. The on arm's score climbs as the Mubit registry accumulates
-      (first scan ${fmt2(firstOn)} → last scan ${fmt2(lastOn)}). Same scans, same model, same scoring rule —
-      the memory is the only variable.</div>
+      report what is visible. The replay arm and the on arm both see the past — replay as raw history
+      resent in every prompt, the on arm as a fixed-size registry recalled from Mubit — and both climb
+      (on: first scan ${fmt2(firstOn)} → last scan ${fmt2(lastOn)}). Same scans, same model, same scoring
+      rule — what each arm carries between scans is the only variable.</div>
     <div style="overflow-x:auto"><table class="report-table">
       <tr><th>arm</th><th>mean iou</th><th>final iou</th><th>transmitters known</th><th>llm calls</th><th>tokens</th><th>model time</th><th>llm spend</th></tr>
       ${row('memory off',off,'')}
-      ${row('memory on',on,'onhl')}
+      ${row('context replay',icl,'')}
+      ${row('memory on — mubit',on,'onhl')}
     </table></div>
-    <div class="report-delta">memory on mean IoU ${fmt2(mean(on))} vs ${fmt2(mean(off))} off — the gap grows with every scan the registry survives</div>
+    <div class="report-delta">memory on mean IoU ${fmt2(mean(on))} vs replay ${fmt2(mean(icl))} vs off ${fmt2(mean(off))} — the accuracy gap over off grows with every scan the registry survives</div>
+    <div class="report-note">Spend shape: the off and on prompts have a near-constant size, so their spend
+      grows linearly with the stream (off ${fmt$(perScan(off))}/scan, on ${fmt$(perScan(on))}/scan here — the
+      registry block is one line per known transmitter regardless of stream length). The replay prompt
+      contains every earlier scan, so its per-scan cost grows with the stream: its last prompt here was
+      ${fmtTok(icl.lastTin)} tokens against off's near-constant prompt, and on the benchmark's full 90-scan
+      schedule the same strategy resends 89 scans in the final prompt. The off arm makes the cheapest calls
+      and has no path to a transmitter that is dormant in the current scan.</div>
     <div class="report-note">The scans are the real mixed_grid_lifecycle corpus of the Continual Learning Bench
       (read in place from the benchmark repository), scored with the benchmark's published availability-IoU
       rule reimplemented here over the stages present in this window. This page is a demo protocol on a small
       sample — the leaderboard numbers come from the benchmark's own harness on the full 90-scan schedule.
       LLM call and token counts come from the provider usage fields, attributed per arm. The registry is
-      stored in Mubit and recalled every scan; the off arm makes no Mubit calls.</div>
+      stored in Mubit and recalled every scan; the off and replay arms make no Mubit calls.</div>
     <div class="report-actions" style="margin-top:12px"><button onclick="downloadTrace()"
       style="background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:11.5px;padding:6px 12px;border-radius:6px;cursor:pointer">Download full run trace (JSON)</button></div>`;
   el.style.display='';
-  narrate(`complete — memory on mean IoU ${fmt2(mean(on))}, memory off ${fmt2(mean(off))}; the off arm never improved`,'learn');
+  narrate(`complete — mean IoU: on ${fmt2(mean(on))}, replay ${fmt2(mean(icl))}, off ${fmt2(mean(off))}; the off arm never improved`,'learn');
 }
 function downloadTrace(){
   const blob=new Blob([JSON.stringify({generated_at:new Date().toISOString(),
     model:document.getElementById('modelBadge').textContent,
-    on:A.on, off:A.off, summary:runSummary, events:_trace},null,1)],{type:'application/json'});
+    on:A.on, off:A.off, icl:A.icl, summary:runSummary, events:_trace},null,1)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
   a.download='mubit-bsm-sample-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.json';

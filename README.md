@@ -1,17 +1,24 @@
 # Mubit BSM Sample Demo
 
-A memory on-vs-off demo over a small sample of the Continual Learning
-Bench blind-spectrum-monitoring task. Each scan of a 168 MHz radio band
-shows only the transmitters that are active at that moment — about a
-quarter of the truth. The task is to report all persistent transmitters,
-dormant ones included.
+A three-arm demo over a small sample of the Continual Learning Bench
+blind-spectrum-monitoring task. Each scan of a 168 MHz radio band shows
+only the transmitters that are active at that moment — about a quarter
+of the truth. The task is to report all persistent transmitters, dormant
+ones included.
 
-Two arms process the same scans with the same model, in lockstep:
+Three arms process the same scans with the same model, in lockstep. They
+differ only in what they carry between scans:
 
-- **Memory off** holds nothing between scans. Its score stays flat.
+- **Memory off** holds nothing. Its score stays flat, and it makes the
+  cheapest calls.
+- **Context replay** holds no external memory but resends every earlier
+  scan verbatim in each prompt. Its score climbs, and its per-scan cost
+  grows with the stream because the prompt contains the full history.
 - **Memory on** keeps a transmitter registry in Mubit: `recall` before
   each report, `remember` (upsert) after it. Its score climbs as the
-  registry accumulates.
+  registry accumulates, and the registry block in the prompt has a
+  bounded size (one line per known transmitter) regardless of stream
+  length.
 
 Scoring is the benchmark's published availability-IoU rule, reimplemented
 here over the stages present in the sampled window. The default window
@@ -41,8 +48,8 @@ cp .env.example .env     # fill in the values
 ./run_demo.sh            # then open http://localhost:7873
 ```
 
-Press **Run Sample**. The run makes two LLM calls per scan (one per arm)
-plus the on arm's Mubit calls. `BSM_LO` / `BSM_HI` change the scan
+Press **Run Sample**. The run makes three LLM calls per scan (one per
+arm) plus the on arm's Mubit calls. `BSM_LO` / `BSM_HI` change the scan
 window; `DEMO_PORT` changes the port.
 
 ## What the UI shows
@@ -51,11 +58,13 @@ window; `DEMO_PORT` changes the port.
   scan, dim = dormant), and each arm's latest report below it. The on
   arm's row keeps blocks that vanished from the current scan; only the
   registry carries them.
-- **Score per scan** — both arms' availability IoU, live. The off arm is
-  flat; the on arm climbs.
+- **Score per scan** — each arm's availability IoU, live. The off arm is
+  flat; the replay and on arms climb.
+- **Cumulative LLM spend** — each arm's running cost. Off and on grow
+  linearly; the replay curve bends upward as its prompt grows.
 - **Learning ledger** — every registry addition, and the drift boundary.
 - **End card** — mean and final IoU, transmitters known, calls, tokens,
-  and spend per arm, with the measurement notes.
+  and spend per arm, with the spend-shape and measurement notes.
 
 This page is a demo protocol on a small sample. The leaderboard numbers
 come from the benchmark's own harness on the full 90-scan schedule.
