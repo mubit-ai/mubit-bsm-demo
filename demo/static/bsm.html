@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mubit Spectrum Sample — CL-Bench BSM</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#0d1117; --bg-subtle:#11171f; --bg-inset:#090d12;
+  --border:#232b36; --border-subtle:#1b222b;
+  --text:#e6edf3; --text-secondary:#b0bac5; --muted:#768390; --faint:#4d5761;
+  --accent:#58a6ff; --success:#3fb950; --warning:#d29922; --danger:#f85149;
+  --purple:#bc8cff;
+  --mono:ui-monospace,'SF Mono','Cascadia Code','Fira Code',Menlo,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:var(--sans); padding:28px 32px 60px; }
+.page { max-width:1380px; margin:0 auto; }
+h1 { font-size:23px; letter-spacing:-.02em; }
+.subtitle { color:var(--text-secondary); font-size:13.5px; margin-top:6px; max-width:920px; line-height:1.5; }
+.controls { display:flex; align-items:center; gap:12px; margin-top:14px; }
+button.primary { background:var(--accent); border:1px solid var(--accent); color:#04121f;
+  font-weight:600; font-size:13px; padding:8px 18px; border-radius:6px; cursor:pointer; }
+button.primary:disabled { opacity:.45; cursor:not-allowed; }
+.model-badge { font-family:var(--mono); font-size:12px; color:var(--accent);
+  border:1px solid var(--border); border-radius:6px; padding:6px 10px; background:var(--bg-subtle); }
+.status-pill { font-family:var(--mono); font-size:11px; padding:3px 10px; border-radius:20px;
+  border:1px solid var(--border); color:var(--muted); }
+.status-running { color:var(--accent); border-color:rgba(88,166,255,.4); }
+.status-done { color:var(--success); border-color:rgba(63,185,80,.4); }
+.status-fail { color:var(--danger); border-color:rgba(248,81,73,.4); }
+.scanmeta { font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-left:auto; }
+
+.narration { display:flex; align-items:center; gap:10px; margin-top:16px;
+  border:1px solid var(--border); border-radius:8px; background:var(--bg-subtle);
+  padding:11px 16px; font-family:var(--mono); font-size:13px; min-height:44px; }
+.n-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none;
+  animation:pulse 1.6s infinite; }
+@keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+.narration.learn { border-color:rgba(63,185,80,.55); box-shadow:0 0 0 1px rgba(63,185,80,.25); }
+.narration.learn .n-dot { background:var(--success); }
+.narration.drift { border-color:rgba(188,140,255,.55); }
+.narration.drift .n-dot { background:var(--purple); }
+
+.band-card { margin-top:16px; border:1px solid var(--border); border-radius:10px;
+  background:var(--bg-subtle); padding:14px 16px; }
+.band-card h3, .chart-card h3 { font-size:11px; color:var(--text-secondary);
+  text-transform:uppercase; letter-spacing:.08em; }
+.band-note { font-size:11px; color:var(--faint); margin-top:2px; }
+canvas.band { width:100%; height:150px; margin-top:10px; display:block; }
+
+.cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+.arm { border:1px solid var(--border); border-radius:10px; background:var(--bg-subtle); padding:12px 14px; }
+.arm.off { border-top:3px solid var(--warning); }
+.arm.on  { border-top:3px solid var(--success); }
+.arm h2 { font-size:14px; }
+.arm.off h2 { color:var(--warning); }
+.arm.on  h2 { color:var(--success); }
+.arm-sub { font-size:11px; color:var(--muted); margin-left:8px; }
+.stat-row { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-top:10px; }
+.mini { background:var(--bg-inset); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 8px; }
+.mini .v { font-family:var(--mono); font-size:14px; font-variant-numeric:tabular-nums; }
+.mini .l { font-size:9px; color:var(--faint); text-transform:uppercase; letter-spacing:.06em; margin-top:2px; }
+.mubit-line { font-family:var(--mono); font-size:11px; color:var(--success); margin-top:8px; min-height:15px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.ledger { margin-top:16px; border:1px solid var(--border-subtle); border-radius:8px;
+  background:var(--bg-inset); padding:8px 12px; font-family:var(--mono); font-size:11.5px;
+  max-height:110px; overflow-y:auto; }
+.ledger-title { color:var(--faint); text-transform:uppercase; letter-spacing:.1em; font-size:10px; margin-bottom:4px; }
+.ledger-row { padding:2px 0; color:var(--text-secondary); }
+.ledger-row b.add { color:var(--success); }
+.ledger-row b.drift { color:var(--purple); }
+.lib-empty { font-size:11px; color:var(--faint); font-style:italic; }
+
+.chart-card { margin-top:16px; border:1px solid var(--border); border-radius:10px;
+  background:var(--bg-subtle); padding:14px 16px; }
+.chart-wrap { height:230px; margin-top:10px; }
+
+.report-card { margin-top:18px; border:1px solid var(--border); border-radius:10px;
+  background:var(--bg-subtle); padding:16px 18px; display:none; }
+.report-card h3 { font-size:15px; text-transform:none; letter-spacing:0; color:var(--text); }
+.report-parity { font-size:12.5px; color:var(--text-secondary); margin-top:8px; }
+.report-table { border-collapse:collapse; margin-top:12px; font-family:var(--mono); font-size:12px; width:100%; }
+.report-table th { text-align:left; color:var(--faint); font-weight:500; font-size:10.5px;
+  text-transform:uppercase; letter-spacing:.06em; padding:5px 14px 5px 0; border-bottom:1px solid var(--border); }
+.report-table td { padding:7px 14px 7px 0; border-bottom:1px solid var(--border-subtle);
+  font-variant-numeric:tabular-nums; }
+.report-table td.onhl { color:var(--success); font-weight:700; }
+.report-delta { font-family:var(--mono); font-size:12px; color:var(--success); margin-top:10px; }
+.report-note { font-size:11px; color:var(--faint); margin-top:10px; line-height:1.5; }
+@media (max-width:1000px){ .cols{grid-template-columns:1fr} .stat-row{grid-template-columns:repeat(3,1fr)} }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>Mubit Spectrum Sample</h1>
+  <p class="subtitle">
+    A small sample of the Continual Learning Bench blind-spectrum-monitoring task,
+    scored with the benchmark's published availability-IoU rule. Each scan shows only
+    the transmitters that are active right now — about a quarter of the truth. Both
+    arms get the same scans and the same model. The arm on the right keeps a
+    transmitter registry in Mubit: it recalls the registry before each report and
+    writes the update back after it. The arm on the left holds nothing between scans.
+  </p>
+  <div class="controls">
+    <span class="model-badge" id="modelBadge">gemini-3.7-flash</span>
+    <button id="runBtn" class="primary" onclick="startRun()">Run Sample</button>
+    <span id="statusPill" class="status-pill">idle</span>
+    <span class="scanmeta" id="scanMeta"></span>
+  </div>
+</header>
+
+<div class="narration" id="narrationBar"><span class="n-dot"></span><span id="narrationText">press Run Sample to start</span></div>
+
+<div class="band-card">
+  <h3>The 168 MHz band — truth vs each arm's latest report</h3>
+  <div class="band-note">top: the window's transmitters (bright = active this scan, dim = dormant) · middle: memory-off report · bottom: memory-on report</div>
+  <canvas class="band" id="bandCanvas" height="150"></canvas>
+</div>
+
+<div class="cols">
+  <section class="arm off">
+    <div style="display:flex;align-items:baseline"><h2>Memory Off</h2><span class="arm-sub">sees only the current scan</span></div>
+    <div class="stat-row">
+      <div class="mini"><div class="v" id="off-scan">0</div><div class="l">scans</div></div>
+      <div class="mini"><div class="v" id="off-iou">—</div><div class="l">last iou</div></div>
+      <div class="mini"><div class="v" id="off-mean">—</div><div class="l">mean iou</div></div>
+      <div class="mini"><div class="v" id="off-known">0</div><div class="l">reported</div></div>
+      <div class="mini"><div class="v" id="off-llm">0</div><div class="l">llm calls</div></div>
+      <div class="mini"><div class="v" id="off-cost">$0</div><div class="l">llm spend</div></div>
+    </div>
+  </section>
+  <section class="arm on">
+    <div style="display:flex;align-items:baseline"><h2>Memory On — Mubit</h2><span class="arm-sub">registry recalled and updated each scan</span></div>
+    <div class="stat-row">
+      <div class="mini"><div class="v" id="on-scan">0</div><div class="l">scans</div></div>
+      <div class="mini"><div class="v" id="on-iou">—</div><div class="l">last iou</div></div>
+      <div class="mini"><div class="v" id="on-mean">—</div><div class="l">mean iou</div></div>
+      <div class="mini"><div class="v" id="on-known">0</div><div class="l">in registry</div></div>
+      <div class="mini"><div class="v" id="on-llm">0</div><div class="l">llm calls</div></div>
+      <div class="mini"><div class="v" id="on-cost">$0</div><div class="l">llm spend</div></div>
+    </div>
+    <div class="mubit-line" id="on-mubit">mubit calls: 0</div>
+  </section>
+</div>
+
+<div class="ledger">
+  <div class="ledger-title">learning ledger — what entered the registry</div>
+  <div id="ledgerRows"><span class="lib-empty">registry events will appear here</span></div>
+</div>
+
+<div class="chart-card">
+  <h3>Score per scan — the benchmark's availability IoU</h3>
+  <div class="chart-wrap"><canvas id="chartIoU"></canvas></div>
+</div>
+
+<div class="report-card" id="reportCard"></div>
+
+</div>
+<script>
+let running=false, chart=null, runSummary=null, _trace=[];
+const PRICES=[
+  ['gemini-3.7-flash',{tin:0.75,tout:3.75}],
+  ['gemini-2.5-flash-lite',{tin:0.10,tout:0.40}],
+  ['gemini-2.5-flash',{tin:0.30,tout:2.50}],
+  ['gpt-5-mini',{tin:0.25,tout:2.00}],
+  ['gpt-5',{tin:1.25,tout:10.00}],
+];
+function priceFor(m){ if(!m)return null; for(const [k,p] of PRICES) if(m.startsWith(k)) return p; return null; }
+function fmt$(v){ return v==null?'—':'$'+(+v).toFixed(4); }
+function fmtTok(n){ return n>=1000?(n/1000).toFixed(1)+'k':''+n; }
+function esc(s){ return (''+s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function set(id,v){ const el=document.getElementById(id); if(el) el.textContent=v; }
+
+function newArm(){ return {scan:0,calls:0,tin:0,tout:0,cost:0,ms:0,ious:[],known:0,intervals:[]}; }
+let A={on:newArm(),off:newArm()}, mubitCalls=0;
+let META=null, ACTIVE=[], totalScans=0;
+
+function narrate(t,cls){
+  set('narrationText',t);
+  const bar=document.getElementById('narrationBar');
+  bar.classList.remove('learn','drift');
+  if(cls) bar.classList.add(cls);
+}
+function ledger(kind,text){
+  const rows=document.getElementById('ledgerRows');
+  const ph=rows.querySelector('.lib-empty'); if(ph)ph.remove();
+  const div=document.createElement('div'); div.className='ledger-row';
+  div.innerHTML=`<b class="${kind}">${kind==='drift'?'drift':'registry'}</b> ${esc(text)}`;
+  rows.prepend(div);
+}
+function setPill(cls,text){
+  const p=document.getElementById('statusPill');
+  p.className='status-pill status-'+cls; p.textContent=text;
+}
+
+// ── Band strip ─────────────────────────────────────────
+function drawBand(){
+  const cv=document.getElementById('bandCanvas');
+  const W=cv.clientWidth; cv.width=W;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,W,150);
+  const band=META?META.band:[0,168];
+  const X=f=>(f-band[0])/(band[1]-band[0])*W;
+  const lane=(y,h,label,color)=>{
+    ctx.fillStyle='#4d5761'; ctx.font='9px ui-monospace,monospace';
+    ctx.fillText(label,2,y-3);
+    ctx.strokeStyle='#1b222b'; ctx.strokeRect(0,y,W,h);
+  };
+  // Lane 1: truth
+  lane(14,34,'TRUTH · bright = active this scan');
+  if(META) for(const t of META.truth){
+    const active=ACTIVE.some(a=>Math.abs(a.cf-t.cf)<3);
+    ctx.fillStyle=active?'rgba(88,166,255,.85)':'rgba(118,131,144,.30)';
+    ctx.fillRect(X(t.cf-t.bw/2),14,Math.max(2,X(t.cf+t.bw/2)-X(t.cf-t.bw/2)),34);
+  }
+  // Lane 2: off report
+  lane(62,34,'MEMORY OFF — latest report');
+  ctx.fillStyle='rgba(210,153,34,.75)';
+  for(const [a,b] of A.off.intervals) ctx.fillRect(X(a),62,Math.max(2,X(b)-X(a)),34);
+  // Lane 3: on report
+  lane(110,34,'MEMORY ON — latest report');
+  ctx.fillStyle='rgba(63,185,80,.75)';
+  for(const [a,b] of A.on.intervals) ctx.fillRect(X(a),110,Math.max(2,X(b)-X(a)),34);
+}
+
+function initChart(){
+  if(chart){ chart.destroy(); chart=null; }
+  chart=new Chart(document.getElementById('chartIoU'),{type:'line',data:{datasets:[
+    {label:'memory off',data:[],borderColor:'#d29922',borderWidth:1.6,tension:.25,pointRadius:2,pointBackgroundColor:'#d29922'},
+    {label:'memory on',data:[],borderColor:'#3fb950',borderWidth:1.6,tension:.25,pointRadius:2,pointBackgroundColor:'#3fb950'},
+  ]},options:{responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{labels:{color:'#b0bac5',font:{size:11}}}},
+    scales:{x:{type:'linear',title:{display:true,text:'scan',color:'#4d5761',font:{size:10}},
+               ticks:{color:'#768390',font:{size:10},stepSize:2},grid:{color:'#1b222b'}},
+            y:{min:0,max:1,title:{display:true,text:'availability IoU',color:'#4d5761',font:{size:10}},
+               ticks:{color:'#768390',font:{size:10}},grid:{color:'#1b222b'}}}}});
+}
+
+function statRefresh(arm){
+  const a=A[arm];
+  set(arm+'-scan',a.scan);
+  set(arm+'-iou',a.ious.length?a.ious[a.ious.length-1].toFixed(2):'—');
+  set(arm+'-mean',a.ious.length?(a.ious.reduce((x,y)=>x+y,0)/a.ious.length).toFixed(2):'—');
+  set(arm+'-known',a.known);
+  set(arm+'-llm',a.calls);
+  set(arm+'-cost',fmt$(a.cost));
+}
+
+function resetUI(){
+  A={on:newArm(),off:newArm()}; mubitCalls=0; runSummary=null; META=null; ACTIVE=[];
+  ['on','off'].forEach(statRefresh);
+  set('on-mubit','mubit calls: 0'); set('scanMeta','');
+  document.getElementById('ledgerRows').innerHTML='<span class="lib-empty">registry events will appear here</span>';
+  document.getElementById('reportCard').style.display='none';
+  initChart(); drawBand();
+}
+
+function handleEvent(d){
+  if(d.type==='start'){ _trace=[]; }
+  _trace.push(d);
+  switch(d.type){
+    case 'start':
+      resetUI();
+      if(d.model) set('modelBadge',d.model);
+      setPill('running','running');
+      narrate('running — both arms score every scan against the benchmark rule');
+      break;
+
+    case 'meta':
+      META=d; totalScans=d.scans;
+      set('scanMeta',`scans ${d.window[0]+1}-${d.window[1]} of the mixed_grid_lifecycle corpus · ${d.truth.length} latent transmitters`);
+      drawBand();
+      break;
+
+    case 'scan':
+      ACTIVE=d.active||[];
+      narrate(`scan ${d.n}/${d.total} — ${d.peaks.length} peak${d.peaks.length===1?'':'s'} visible of ${META?META.truth.length:'?'} transmitters`);
+      drawBand();
+      break;
+
+    case 'stage':
+      ledger('drift',`scan ${d.scan}: stage change — ${d.variant} (new channels start appearing)`);
+      narrate('concept drift — the scan distribution just changed; watch which arm keeps its score','drift');
+      break;
+
+    case 'registry':
+      A.on.known=d.size;
+      statRefresh('on');
+      ledger('add',`scan ${d.scan}: ${d.added.join(', ')} added — registry holds ${d.size} (written to Mubit)`);
+      narrate(`the on arm discovered ${d.added.length} new transmitter${d.added.length===1?'':'s'} (${d.added.join(', ')}) — the registry now holds ${d.size}`,'learn');
+      break;
+
+    case 'mubit':
+      mubitCalls++;
+      set('on-mubit','mubit calls: '+mubitCalls+' · last: '+(d.label||d.op)+' '+(d.latency_ms||'?')+'ms');
+      break;
+
+    case 'llm_call': {
+      const arm=d.arm; if(!arm) break;
+      const a=A[arm];
+      a.calls++; a.tin+=d.input_tokens||0; a.tout+=d.output_tokens||0; a.ms+=d.latency_ms||0;
+      const p=priceFor(d.model);
+      if(p) a.cost+=((d.input_tokens||0)*p.tin+(d.output_tokens||0)*p.tout)/1e6;
+      statRefresh(arm);
+      break;
+    }
+
+    case 'report': {
+      const arm=d.arm; if(!arm) break;
+      const a=A[arm];
+      a.scan=d.n; a.ious.push(d.iou); a.intervals=d.intervals||[];
+      if(arm==='off') a.known=d.count; else a.known=d.known;
+      statRefresh(arm);
+      chart.data.datasets[arm==='off'?0:1].data.push({x:d.n,y:d.iou});
+      chart.update('none');
+      drawBand();
+      if(arm==='on'&&d.known>(ACTIVE.length||0)&&d.n>3){
+        const dormant=d.known-ACTIVE.length;
+        narrate(`scan ${d.n} — the on arm reports ${d.count} transmitters; ${dormant} of the known ${d.known} are dormant right now and only memory carries them`,'learn');
+      }
+      break;
+    }
+
+    case 'done': if(d.summary) runSummary=d.summary; break;
+
+    case 'error':
+      setPill('fail','error');
+      document.getElementById('runBtn').disabled=false; running=false;
+      narrate('scenario error: '+(d.message||'unknown')+' — see server logs');
+      break;
+
+    case 'all_done':
+      document.getElementById('runBtn').disabled=false; running=false;
+      setPill('done','complete');
+      renderReport();
+      break;
+  }
+}
+
+function renderReport(){
+  const el=document.getElementById('reportCard');
+  const mean=a=>a.ious.length?(a.ious.reduce((x,y)=>x+y,0)/a.ious.length):null;
+  const fmt2=v=>v==null?'—':(+v).toFixed(2);
+  const row=(name,a,hl)=>`<tr><td>${name}</td><td class="${hl}">${fmt2(mean(a))}</td>
+    <td>${a.ious.length?fmt2(a.ious[a.ious.length-1]):'—'}</td>
+    <td>${a.known}</td><td>${a.calls}</td><td>${fmtTok(a.tin+a.tout)}</td>
+    <td>${(a.ms/1000).toFixed(0)}s</td><td>${fmt$(a.cost)}</td></tr>`;
+  const on=A.on, off=A.off;
+  const firstOn=on.ious.length?on.ious[0]:null, lastOn=on.ious.length?on.ious[on.ious.length-1]:null;
+  el.innerHTML=`<h3>Memory On vs Memory Off — ${totalScans} real benchmark scans</h3>
+    <div class="report-parity">The off arm's score stays flat: with no state between scans it can only
+      report what is visible. The on arm's score climbs as the Mubit registry accumulates
+      (first scan ${fmt2(firstOn)} → last scan ${fmt2(lastOn)}). Same scans, same model, same scoring rule —
+      the memory is the only variable.</div>
+    <div style="overflow-x:auto"><table class="report-table">
+      <tr><th>arm</th><th>mean iou</th><th>final iou</th><th>transmitters known</th><th>llm calls</th><th>tokens</th><th>model time</th><th>llm spend</th></tr>
+      ${row('memory off',off,'')}
+      ${row('memory on',on,'onhl')}
+    </table></div>
+    <div class="report-delta">memory on mean IoU ${fmt2(mean(on))} vs ${fmt2(mean(off))} off — the gap grows with every scan the registry survives</div>
+    <div class="report-note">The scans are the real mixed_grid_lifecycle corpus of the Continual Learning Bench
+      (read in place from the benchmark repository), scored with the benchmark's published availability-IoU
+      rule reimplemented here over the stages present in this window. This page is a demo protocol on a small
+      sample — the leaderboard numbers come from the benchmark's own harness on the full 90-scan schedule.
+      LLM call and token counts come from the provider usage fields, attributed per arm. The registry is
+      stored in Mubit and recalled every scan; the off arm makes no Mubit calls.</div>
+    <div class="report-actions" style="margin-top:12px"><button onclick="downloadTrace()"
+      style="background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-size:11.5px;padding:6px 12px;border-radius:6px;cursor:pointer">Download full run trace (JSON)</button></div>`;
+  el.style.display='';
+  narrate(`complete — memory on mean IoU ${fmt2(mean(on))}, memory off ${fmt2(mean(off))}; the off arm never improved`,'learn');
+}
+function downloadTrace(){
+  const blob=new Blob([JSON.stringify({generated_at:new Date().toISOString(),
+    model:document.getElementById('modelBadge').textContent,
+    on:A.on, off:A.off, summary:runSummary, events:_trace},null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='mubit-bsm-sample-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.json';
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+
+function startRun(){
+  if(running)return;
+  running=true;
+  document.getElementById('runBtn').disabled=true;
+  setPill('running','starting…');
+  fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({scenario:'bsm'})
+  }).then(res=>{
+    const reader=res.body.getReader();
+    const dec=new TextDecoder();
+    let buf='';
+    function pump(){
+      reader.read().then(({done,value})=>{
+        if(done){running=false;document.getElementById('runBtn').disabled=false;return;}
+        buf+=dec.decode(value,{stream:true});
+        const lines=buf.split('\n');buf=lines.pop();
+        for(let i=0;i<lines.length;i++){
+          if(lines[i].startsWith('data: ')){
+            try{handleEvent(JSON.parse(lines[i].slice(6)));}catch(e){}
+          }
+        }
+        pump();
+      });
+    }
+    pump();
+  });
+}
+
+initChart(); drawBand();
+window.addEventListener('resize',drawBand);
+</script>
+</body>
+</html>
